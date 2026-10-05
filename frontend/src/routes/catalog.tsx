@@ -1,6 +1,7 @@
-import { Form, Link, useLoaderData, useRouteLoaderData, useSubmit } from "react-router";
+import { Link, useLoaderData, useRouteLoaderData } from "react-router";
 import { openCartQuantities, type StoreData } from "../components/layout/StoreShell";
 import { ProductCard } from "../components/store/ProductCard";
+import { SortMenu } from "../components/store/SortMenu";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Icon } from "../components/ui/Icon";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -10,6 +11,13 @@ import type { Product } from "../types";
 
 type Sort = "featured" | "price-asc" | "price-desc" | "name";
 type Availability = "all" | "in-stock";
+
+const sortOptions: { value: Sort; label: string }[] = [
+  { value: "featured", label: "Featured" },
+  { value: "price-asc", label: "Price: low to high" },
+  { value: "price-desc", label: "Price: high to low" },
+  { value: "name", label: "Name" },
+];
 
 type CatalogData = {
   all: Product[];
@@ -61,7 +69,6 @@ function catalogHref(data: CatalogData, change: Partial<Record<"q" | "category" 
 export function CatalogPage() {
   const data = useLoaderData() as CatalogData;
   const store = useRouteLoaderData("store") as StoreData;
-  const submit = useSubmit();
   const inCart = openCartQuantities(store.cart);
   const { all, products, query, category, sort, availability } = data;
   const title = category ?? (query ? `Results for “${query}”` : "All products");
@@ -113,19 +120,13 @@ export function CatalogPage() {
                   </Link>
                 ) : null}
               </div>
-              <Form method="get" onChange={(event) => submit(event.currentTarget)}>
-                {query ? <input type="hidden" name="q" value={query} /> : null}
-                {category ? <input type="hidden" name="category" value={category} /> : null}
-                {availability !== "all" ? <input type="hidden" name="availability" value={availability} /> : null}
-                <label htmlFor="sort" className="muted small">Sort by</label>
-                <select id="sort" name="sort" className="select" defaultValue={sort}>
-                  <option value="featured">Featured</option>
-                  <option value="price-asc">Price: low to high</option>
-                  <option value="price-desc">Price: high to low</option>
-                  <option value="name">Name</option>
-                </select>
-                <noscript><button className="btn btn--outline btn--sm" type="submit">Apply</button></noscript>
-              </Form>
+              <SortMenu
+                value={sort}
+                options={sortOptions.map((option) => ({
+                  ...option,
+                  href: catalogHref(data, { sort: option.value === "featured" ? null : option.value }),
+                }))}
+              />
             </div>
 
             {products.length === 0 ? (

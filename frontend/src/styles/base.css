@@ -96,7 +96,7 @@ table {
   width: 100%;
   max-width: var(--container);
   margin: 0 auto;
-  padding: 0 32px;
+  padding-inline: 32px;
 }
 .section {
   padding-block: 56px;
@@ -630,7 +630,7 @@ table {
 
 @media (max-width: 720px) {
   .container {
-    padding: 0 18px;
+    padding-inline: 18px;
   }
   .section {
     padding-block: 36px;
