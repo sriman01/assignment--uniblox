@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router";
 import { api } from "./lib/api";
+import { AppSplash } from "./components/layout/AppSplash";
 import { RouteError, StoreShell } from "./components/layout/StoreShell";
 import { AboutPage } from "./routes/about";
 import { accountAction, accountLoader, AccountPage } from "./routes/account";
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
     id: "store",
     path: "/",
     loader: storeLoader,
+    HydrateFallback: AppSplash,
     element: <StoreShell />,
     errorElement: <RouteError />,
     children: [
@@ -74,6 +76,7 @@ export const router = createBrowserRouter([
     path: "/admin/sign-in",
     loader: adminSignInLoader,
     action: adminSignInAction,
+    HydrateFallback: AppSplash,
     element: <AdminSignInPage />,
   },
   {
@@ -81,6 +84,7 @@ export const router = createBrowserRouter([
     path: "/admin",
     loader: adminLayoutLoader,
     action: adminLayoutAction,
+    HydrateFallback: AppSplash,
     element: <AdminLayout />,
     errorElement: <RouteError />,
     children: [
