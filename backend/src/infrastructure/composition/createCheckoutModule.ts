@@ -10,6 +10,7 @@ import type { Hono } from "hono";
 import { demoCustomerId } from "../../domain/catalog.js";
 import type { Customer } from "../../domain/model.js";
 import { createHttpApp } from "../adapter/incoming/http/createHttpApp.js";
+import { SessionTokens } from "../adapter/incoming/http/sessionTokens.js";
 import { InMemoryCheckoutStore, type InMemoryStoreOptions } from "../adapter/outgoing/InMemoryCheckoutStore.js";
 import { RandomIdGenerator } from "../adapter/outgoing/RandomIdGenerator.js";
 import { ScryptPasswordHasher } from "../adapter/outgoing/ScryptPasswordHasher.js";
@@ -25,6 +26,9 @@ export type CheckoutModule = {
 export type CheckoutModuleOptions = InMemoryStoreOptions & {
   /** Use this store instead of a fresh in-memory one; the seed options are then ignored. */
   store?: CheckoutStorePort;
+  /** Signs session cookies. Without it a random per-process secret is used, so restarts sign everyone out. */
+  sessionSecret?: string;
+  secureCookies?: boolean;
 };
 
 export function demoCustomers(passwords: PasswordHasherPort, clock: ClockPort): Customer[] {
@@ -53,7 +57,10 @@ export function createCheckoutModule(options?: CheckoutModuleOptions): CheckoutM
   const admin = new AdminServiceClass(store, clock, ids);
   const customers = new CustomerService(store, clock, ids, passwords);
   return {
-    app: createHttpApp(storefront, admin, customers),
+    app: createHttpApp(storefront, admin, customers, {
+      sessions: new SessionTokens(options?.sessionSecret),
+      secureCookies: options?.secureCookies,
+    }),
     storefront,
     admin,
     customers,

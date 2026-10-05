@@ -29,7 +29,7 @@ The brief does not say when the price is fixed, who a coupon belongs to, whether
 - The coupon stores the percent from config at generation time. Milestones are evaluated against the current `n`. If `n` changes, multiples of the new `n` that the customer has already reached become eligible, and coupons that already exist are kept.
 - Administrators can also create custom coupons, either for one customer or for anyone (`customerId: null`). Guests can redeem an “anyone” coupon.
 - Admins can edit a coupon’s percentage, change its owner, and pause or resume it, as long as it is unredeemed. A milestone coupon records who earned it (`earnedByCustomerId`) separately from who may redeem it (`customerId`). Reassigning a coupon therefore never makes the original earner eligible for that milestone again. Deleting an unredeemed milestone coupon does make the milestone eligible again, because deletion means “this reward never happened”. Pausing is the way to revoke a coupon without reissuing it.
-- Customers can register. Emails are case-insensitive and unique, and passwords are scrypt-hashed. Sessions are in-memory cookies, which is enough to attribute orders to accounts.
+- Customers can register. Emails are case-insensitive and unique, and passwords are scrypt-hashed. Sessions are HMAC-signed cookies, so they survive restarts and work across instances (for example on Vercel). That is enough to attribute orders to accounts.
 - One discount is applied to the order gross, then floored. It is not rounded per line, because per-line flooring drifts from the order total.
 - Checkout with no payment provider is the payment. If checkout returns an order, it is paid. There is no authorized-but-not-captured state.
 - `Idempotency-Key` is required. Without it, a timeout and a second click cannot be told apart.
@@ -112,7 +112,7 @@ The brief does not say when the price is fixed, who a coupon belongs to, whether
 **Consequences:**
 - Every request reads the full dataset and is serialized store-wide. That is fine at assignment scale, but not for a large catalog or heavy write traffic. The upgrade path is in "Several instances and a production database".
 - A request costs a few round trips to the database, roughly 100 ms to the hosted instance.
-- Sessions are still in memory.
+- Sessions are not stored in the database. They are signed cookies; see the deferred list.
 
 ## Decision: Per-customer milestones, generated explicitly by an administrator
 
@@ -142,7 +142,7 @@ The brief does not say when the price is fixed, who a coupon belongs to, whether
 - A flat Express router with the rules in the handlers.
 - Domain, outgoing ports, application services, an incoming HTTP adapter, and outgoing adapters. REST verbs and status codes at the edge. `Result` with `success` for expected failures.
 
-**Choice:** The layered module, with ordinary HTTP at the edge and small in-memory browser sessions for the demo customer/admin workflows.
+**Choice:** The layered module, with ordinary HTTP at the edge and small signed-cookie browser sessions for the demo customer/admin workflows.
 
 **Why:** The layering is what keeps checkout rules testable without the server. Vesta’s all-POST admin routes and capability guards assume a platform this exercise does not have. The assignment says authentication is not required, so the demo sessions gate browser routes without pretending to be production authorization.
 
@@ -183,10 +183,10 @@ Implemented:
 
 Deferred:
 
-- Password reset, durable sessions, and API authorization. Customer and admin sessions live in memory, and the admin API stays open as the brief allows.
+- Password reset, server-side session revocation, and API authorization. Sessions are stateless signed cookies that last 7 days: signing out clears the cookie, but a copied token stays valid until it expires. The admin API stays open as the brief allows.
 - A real payment authorizer. Checkout success is payment success.
 - Coupon expiry and stacking. Customer ownership is implemented; one coupon may be supplied per checkout.
-- SKUs and color/size variants. The assignment defines a product as ID, name, current price, and inventory; variant-level inventory is outside its scope and would dilute the concurrency work the exercise weights most heavily.
+- SKUs and color/size variants. The assignment defines a product as ID, name, current price, and inventory; variant-level inventory is outside its scope and would dilute the concurrency work the exercise weights most heavily. The design is sketched under "Future scope: product variants and SKU-level inventory".
 - Tax, shipping, and refunds.
 - Inventory holds and price locks.
 - Row-level locking. The Postgres store serializes all work behind one advisory lock instead of locking individual product and coupon rows.
@@ -203,6 +203,35 @@ The Postgres store is already durable and safe across processes, but it serializ
 - The report is a read of orders and coupons, not a counter that increments on read.
 
 That needs repository-style ports (load this cart, lock these products) instead of the whole-state callback, so the service methods would change shape, but not their rules.
+
+## Future scope: product variants and SKU-level inventory
+
+Today a product is the thing that is priced and stocked. With variants, the product becomes the thing that is browsed, and the SKU becomes the thing that is sold.
+
+**Model**
+
+- **`Product`** keeps the shared fields: `id`, `name`, description, and images. It also declares its option axes, for example `options: [{ name: "size", values: ["S", "M", "L"] }, { name: "color", values: ["Navy", "Sand"] }]`.
+- **`Sku`** is one sellable combination: `{ id, productId, code, attributes, unitPriceCents, availableQuantity }`.
+  - `code` looks like `MERINO-NAVY-L`.
+  - `attributes` holds the chosen values as parameters, for example `{ size: "L", color: "Navy" }`. Any axis works, such as material or length, without a schema change.
+- In Postgres, a `skus` table with a `jsonb` `attributes` column carries a unique index on `(product_id, attributes)`, so one combination cannot exist twice. It also gets `CHECK (available_quantity >= 0)`, the same guarantee products have now.
+
+**Where stock and price live**
+
+- Inventory and price move from the product to the SKU. A product's "in stock" and "from $X" are derived from its SKUs.
+- Cart items and order lines reference `skuId`. Order lines also snapshot the SKU code and attributes, next to the name and cents they already store, so a renamed or retired variant does not rewrite history.
+
+**What stays the same**
+
+- Checkout runs the same steps, keyed by SKU instead of product: price each line, refuse when quantity exceeds that SKU's stock, then decrement that SKU's stock inside the same unit of work.
+- The overlap guarantees carry over unchanged. Two shoppers racing for the last Navy L get one order and one `INSUFFICIENT_INVENTORY`, while Sand M is unaffected.
+
+**What changes**
+
+- **Admin inventory:** stock and price are edited per SKU. Variants are added or retired, but never deleted once ordered.
+- **Product page:** a picker shows each option axis. Combinations that don't exist or are out of stock are disabled.
+- **Report:** quantity is reported per product, with a per-SKU breakdown.
+- **Migration:** each existing product becomes one product with a single default SKU that carries its current price and stock.
 
 ## How AI was used
 

@@ -40,10 +40,33 @@ The server reads `.env` at startup (copy `.env.example`; `.env` is git-ignored).
 | Variable | Meaning |
 | --- | --- |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | Connection |
-| `DB_SSL_MODE` | `require` (default, encrypted), `verify-full` (also set `DB_SSL_CA` to the CA certificate path), or `disable` for a local database |
+| `DB_SSL_MODE` | `require` (default, encrypted), `verify-full` (also set `DB_SSL_CA` to the CA certificate path, or paste the PEM text itself on hosts like Vercel), or `disable` for a local database |
 | `DB_SCHEMA` | Schema for the tables, default `public` |
+| `SESSION_SECRET` | At least 32 characters; signs the session cookies (`openssl rand -hex 32`) |
 
-If the database is configured but unreachable, the server exits instead of silently falling back to memory. The startup log prints which storage is in use. Customer and admin sessions stay in memory, so a restart signs everyone out.
+If the database is configured but unreachable, the server exits instead of silently falling back to memory. The startup log prints which storage is in use.
+
+Customer and admin sessions are HMAC-signed cookies that last 7 days, so any server instance can verify them. Without `SESSION_SECRET`, each process makes up a random secret, and a restart signs everyone out.
+
+### Deploy to Vercel
+
+`vercel.json` runs `npm run build:vercel`. That builds the React app and writes Vercel's Build Output layout to `.vercel/output`:
+
+- `static/` holds the React app, served from the CDN.
+- `functions/api.func` is one Node function that serves every `/api/*` route.
+- Routing sends any other path to `index.html`, so page refreshes work.
+
+To deploy:
+
+1. Import the repo in Vercel. The project settings in `vercel.json` override the dashboard preset, so no framework or output directory needs choosing.
+2. Add these environment variables:
+   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`
+   - `DB_SSL_MODE=verify-full`
+   - `DB_SSL_CA`: the full text of the CA certificate. Vercel has no file upload.
+   - `SESSION_SECRET`
+3. Deploy, then check `/api/health` and `/api/products`.
+
+The function refuses to start without `DB_HOST` or `SESSION_SECRET`. Function instances come and go, so neither data nor sessions may live in memory there.
 
 `npm test` never touches the configured database. The in-memory tests run as before, and `postgresStore.test.ts` runs the Postgres adapter against an embedded PGlite instance.
 
@@ -285,7 +308,9 @@ backend/src/application/port/outgoing      store, clock, and id ports
 backend/src/application/service            cart, checkout, coupons, report
 backend/src/infrastructure/adapter/incoming/http
 backend/src/infrastructure/adapter/outgoing   in-memory store, Postgres store, lock, clock, ids, hashing
-backend/src/infrastructure/composition     wires one module
+backend/src/infrastructure/composition     wires one module; database config and startup
+backend/src/main.ts                        long-running Node server (npm start)
+backend/src/vercel.ts                      Vercel function entry, bundled by scripts/build-vercel.mjs
 backend/tests                              API and domain tests
 frontend/src/routes                       React Router route modules and admin route group
 frontend/src/components                   layout, store, admin, and shared UI components

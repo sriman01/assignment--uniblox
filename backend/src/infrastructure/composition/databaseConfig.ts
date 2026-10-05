@@ -10,7 +10,14 @@ export type DatabaseConfig = {
 /**
  * Returns `null` when DB_HOST is unset, which keeps the app on the in-memory store.
  * DB_SSL_MODE: `require` (default: encrypted, certificate not verified), `verify-full` (needs DB_SSL_CA), or `disable`.
+ * DB_SSL_CA: the PEM text itself, or a path to the PEM file.
  */
+/** Hosts without a filesystem (e.g. Vercel) store the PEM itself in the variable, sometimes with literal `\n`. */
+function caCertificate(value: string): string {
+  if (value.includes("-----BEGIN CERTIFICATE-----")) return value.replace(/\\n/g, "\n");
+  return readFileSync(value, "utf8");
+}
+
 export function databaseConfigFromEnv(env: NodeJS.ProcessEnv = process.env): DatabaseConfig | null {
   const host = env.DB_HOST?.trim();
   if (!host) return null;
@@ -35,9 +42,9 @@ export function databaseConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Dat
   if (sslMode === "disable") {
     ssl = false;
   } else if (sslMode === "verify-full") {
-    const caPath = env.DB_SSL_CA?.trim();
-    if (!caPath) throw new Error("DB_SSL_MODE=verify-full needs DB_SSL_CA (path to the CA certificate)");
-    ssl = { ca: readFileSync(caPath, "utf8"), rejectUnauthorized: true };
+    const ca = env.DB_SSL_CA?.trim();
+    if (!ca) throw new Error("DB_SSL_MODE=verify-full needs DB_SSL_CA (the CA certificate text, or a path to it)");
+    ssl = { ca: caCertificate(ca), rejectUnauthorized: true };
   } else if (sslMode === "require") {
     ssl = { rejectUnauthorized: false };
   } else {
@@ -53,7 +60,8 @@ export function databaseConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Dat
       user: env.DB_USERNAME!.trim(),
       password: env.DB_PASSWORD!,
       ssl,
-      max: 5,
+      // Units of work are serialized in-process, so more connections would sit idle against the provider's limit.
+      max: 2,
       connectionTimeoutMillis: 10_000,
       idleTimeoutMillis: 30_000,
       options: "-c TimeZone=UTC",

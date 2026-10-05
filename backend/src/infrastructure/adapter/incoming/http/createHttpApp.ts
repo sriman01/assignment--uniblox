@@ -9,8 +9,8 @@ import type { DomainError } from "../../../../domain/errors.js";
 import { ErrorCode, domainError } from "../../../../domain/errors.js";
 import type { Result } from "../../../../domain/result.js";
 import { uuidFromString, type Uuid } from "../../../../domain/typeDefinitions.js";
+import { SessionTokens } from "./sessionTokens.js";
 import { statusFor } from "./statusFor.js";
-import { generateUuid } from "../../outgoing/generateUuid.js";
 
 const quantityBody = zod.object({
   quantity: zod.number(),
@@ -78,19 +78,39 @@ const updateCouponBody = zod
 
 type CookieContext = Parameters<typeof getCookie>[0];
 
-export function createHttpApp(storefront: StorefrontService, admin: AdminService, customers: CustomerService): Hono {
-  const adminSessions = new Map<string, string>();
-  const customerSessions = new Map<string, Uuid>();
+export type HttpAppOptions = {
+  sessions?: SessionTokens;
+  /** Mark session cookies `Secure`; turn on when served over HTTPS. */
+  secureCookies?: boolean;
+};
+
+export function createHttpApp(
+  storefront: StorefrontService,
+  admin: AdminService,
+  customers: CustomerService,
+  options: HttpAppOptions = {},
+): Hono {
+  const sessions = options.sessions ?? new SessionTokens();
+  const cookieOptions = {
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: options.secureCookies ?? false,
+    maxAge: sessions.maxAgeSeconds,
+  } as const;
 
   const customerIdFromCookie = (c: CookieContext): Uuid | null => {
-    const token = getCookie(c, "customer_session");
-    return token ? customerSessions.get(token) ?? null : null;
+    const subject = sessions.verify("customer", getCookie(c, "customer_session"));
+    if (!subject) return null;
+    try {
+      return uuidFromString(subject);
+    } catch {
+      return null;
+    }
   };
 
   const startCustomerSession = (c: CookieContext, customerId: Uuid) => {
-    const token = generateUuid();
-    customerSessions.set(token, customerId);
-    setCookie(c, "customer_session", token, { path: "/", httpOnly: true, sameSite: "Lax" });
+    setCookie(c, "customer_session", sessions.issue("customer", customerId), cookieOptions);
   };
 
   const app = new Hono();
@@ -131,9 +151,7 @@ export function createHttpApp(storefront: StorefrontService, admin: AdminService
   });
 
   app.delete("/customer/session", (c) => {
-    const token = getCookie(c, "customer_session");
-    if (token) customerSessions.delete(token);
-    deleteCookie(c, "customer_session", { path: "/" });
+    deleteCookie(c, "customer_session", { path: "/", secure: cookieOptions.secure });
     return c.json({ signedIn: false });
   });
 
@@ -224,15 +242,12 @@ export function createHttpApp(storefront: StorefrontService, admin: AdminService
         401,
       );
     }
-    const token = generateUuid();
-    adminSessions.set(token, adminAccount.email);
-    setCookie(c, "admin_session", token, { path: "/", httpOnly: true, sameSite: "Lax" });
+    setCookie(c, "admin_session", sessions.issue("admin", adminAccount.email), cookieOptions);
     return c.json({ signedIn: true, email: adminAccount.email });
   });
 
   app.get("/admin/session", (c) => {
-    const token = getCookie(c, "admin_session");
-    const email = token ? adminSessions.get(token) : undefined;
+    const email = sessions.verify("admin", getCookie(c, "admin_session"));
     if (!email) {
       return c.json({ signedIn: false });
     }
@@ -240,11 +255,7 @@ export function createHttpApp(storefront: StorefrontService, admin: AdminService
   });
 
   app.delete("/admin/session", (c) => {
-    const token = getCookie(c, "admin_session");
-    if (token) {
-      adminSessions.delete(token);
-    }
-    deleteCookie(c, "admin_session", { path: "/" });
+    deleteCookie(c, "admin_session", { path: "/", secure: cookieOptions.secure });
     return c.json({ signedIn: false });
   });
 
