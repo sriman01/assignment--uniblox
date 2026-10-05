@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { PoolConfig } from "pg";
 
 export type DatabaseConfig = {
@@ -10,6 +10,12 @@ export type DatabaseConfig = {
 /** Hosts without a filesystem (e.g. Vercel, Netlify) store the PEM itself in the variable, sometimes with literal `\n`. */
 function caCertificate(value: string): string {
   if (value.includes("-----BEGIN CERTIFICATE-----")) return value.replace(/\\n/g, "\n");
+  if (!existsSync(value)) {
+    throw new Error(
+      `DB_SSL_CA is "${value.slice(0, 40)}", which is neither certificate text nor an existing file. ` +
+        "On hosts without files (Vercel, Netlify), paste the whole certificate, including the BEGIN/END lines.",
+    );
+  }
   return readFileSync(value, "utf8");
 }
 

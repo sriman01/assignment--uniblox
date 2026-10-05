@@ -21,10 +21,21 @@ async function bootApp() {
   for (const previous of pools.splice(0)) await previous.end();
   const pool = new pg.Pool({ host: "127.0.0.1", port, user: "postgres", database: "postgres", max: 1, options: "-c TimeZone=UTC" });
   pools.push(pool);
-  const store = await PostgresCheckoutStore.open(pool, {
-    schema,
-    seed: () => createSeedState({ customers: demoCustomers(new ScryptPasswordHasher(), new SystemClock()) }),
-  });
+  const open = () =>
+    PostgresCheckoutStore.open(pool, {
+      schema,
+      seed: () => createSeedState({ customers: demoCustomers(new ScryptPasswordHasher(), new SystemClock()) }),
+    });
+  let store: PostgresCheckoutStore | undefined;
+  // The socket server takes one connection at a time and may still be closing the previous boot's.
+  for (let attempt = 1; !store; attempt += 1) {
+    try {
+      store = await open();
+    } catch (error) {
+      if (attempt >= 20 || !String(error).includes("ECONNRESET")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
   return { app: createCheckoutModule({ store }).app, store, pool };
 }
 
