@@ -11,6 +11,8 @@ Approximate implementation and verification time in this session: 1 hour.
 - An idempotency key belongs to one cart.
 - A coupon is redeemed by at most one successful checkout.
 - A checkout that fails does not redeem a coupon and does not check out the cart.
+- A customer gets at most one coupon per milestone of their own orders. Guest orders never count.
+- A redeemed coupon never changes and cannot be deleted. It is part of an order’s receipt.
 - An order’s gross, discount, and net are frozen at placement. Later catalog edits do not change them.
 - Discount is an integer number of cents, from zero through the gross. Net is `gross - discount` and is never negative.
 - The report’s gross, discounts, net, unit counts, and coupon counts match the stored orders and coupons.
@@ -22,9 +24,12 @@ The brief does not say when the price is fixed, who a coupon belongs to, whether
 
 - The cart stores product id and quantity. Prices are read from the catalog when the cart is viewed and again at checkout. The order stores the checkout price. I would rather show the price the customer is about to pay than surprise them with an old one, and I would rather not build reservation expiry in this timebox.
 - Adding to a cart still refuses a quantity that is already above current stock, so a bad quantity never sits in the cart quietly. Stock can fall afterward. Checkout checks again.
-- The UI has one demo customer account. When the milestone order belongs to a customer, the generated coupon belongs to that customer and other customers cannot redeem it. Anonymous API orders produce a global coupon to retain the assignment's authentication-free API behavior.
-- The nth successful order makes a milestone eligible. It does not discount itself. An administrator generates `MILESTONE-n`, and a later checkout supplies that code. An order that uses a coupon still counts toward the next milestone.
-- The coupon stores the percent from config at generation time.
+- “Every nth order” is counted per customer, not across the whole store. A customer’s own nth, 2nth, … successful order makes a milestone eligible for that customer, and the coupon belongs to them. Guest orders, placed without a customer session, do not count toward anyone. I chose this because a store-wide counter rewards whoever happens to place the 5th order, which is a lottery rather than a loyalty reward.
+- The milestone order is not discounted itself. An administrator generates the coupon, and a later checkout supplies the code. An order that uses a coupon still counts toward the customer’s next milestone.
+- The coupon stores the percent from config at generation time. Milestones are evaluated against the current `n`. If `n` changes, multiples of the new `n` that the customer has already reached become eligible, and coupons that already exist are kept.
+- Administrators can also create custom coupons, either for one customer or for anyone (`customerId: null`). Guests can redeem an “anyone” coupon.
+- Admins can edit a coupon’s percentage, change its owner, and pause or resume it, as long as it is unredeemed. A milestone coupon records who earned it (`earnedByCustomerId`) separately from who may redeem it (`customerId`). Reassigning a coupon therefore never makes the original earner eligible for that milestone again. Deleting an unredeemed milestone coupon does make the milestone eligible again, because deletion means “this reward never happened”. Pausing is the way to revoke a coupon without reissuing it.
+- Customers can register. Emails are case-insensitive and unique, and passwords are scrypt-hashed. Sessions are in-memory cookies, which is enough to attribute orders to accounts.
 - One discount is applied to the order gross, then floored. It is not rounded per line, because per-line flooring drifts from the order total.
 - Checkout with no payment provider is the payment. If checkout returns an order, it is paid. There is no authorized-but-not-captured state.
 - `Idempotency-Key` is required. Without it, a timeout and a second click cannot be told apart.
@@ -85,22 +90,48 @@ The brief does not say when the price is fixed, who a coupon belongs to, whether
 
 **Why:** A gap between “coupon is free” and “coupon is redeemed” is the bug. The lock is not reentrant, so services do not call back into `transaction` while they hold it. The write path is synchronous, so the lock is not held across I/O.
 
-**Consequences:** This is correct for one process. It does not coordinate two API processes. See the scale section. Tests fire competing checkouts with `Promise.all` rather than only a happy path.
+**Consequences:** The in-memory lock is correct for one process. The Postgres store keeps the same contract across processes; see the next decision. Tests fire competing checkouts with `Promise.all` rather than only a happy path.
 
-## Decision: Generate coupons explicitly, one milestone at a time
+## Decision: Postgres behind the same unit-of-work port
 
-**Context:** Every nth successful order makes a discount available. The brief also says an administrator requests generation, and a coupon is supplied at checkout.
+**Context:** Data had to survive restarts, and the services were written against `CheckoutStorePort.transaction(work)`, where `work` runs alone and synchronously against the whole state.
 
 **Options considered:**
-- Automatically attach the discount to the nth order.
-- Generate every eligible milestone in one call.
-- Generate the oldest missing milestone when an administrator asks, and only if the order count has reached it.
+- Rewrite every service method as hand-written SQL.
+- Store the whole state as one JSON document.
+- Keep the port. Each unit of work becomes one database transaction over normal tables.
 
-**Choice:** One explicit coupon per request, oldest milestone first. Codes are `MILESTONE-5`, `MILESTONE-10`, and so on.
+**Choice:** `PostgresCheckoutStore` takes `pg_advisory_xact_lock`, loads every table in one query, runs the unchanged service code, diffs the rows before and after, and upserts or deletes only what changed, then commits.
 
-**Why:** Generation and redemption are separate in the brief. Auto-applying the discount would hide that, and it would discount an order the shopper has already paid. A stable code makes the “already generated” check obvious. A failed checkout does not burn the code, so the next attempt can use it.
+**Why:**
+- Checkout, coupon, and reward rules stay in one tested place.
+- The advisory lock gives the same "runs alone" guarantee as the in-memory lock, and it also covers several API processes.
+- A thrown error rolls the whole transaction back, which is safer than the in-memory store, where a throw midway could leave partial writes.
+- Constraints back up the rules: non-negative stock, a unique email, a unique idempotency key, one coupon per earner and milestone, and foreign keys deferred to commit.
 
-**Consequences:** Nobody receives a coupon until an administrator generates it. The shop’s admin page is that action. Two checkouts racing for one code: one pays the discounted total, the other gets `COUPON_UNAVAILABLE` and keeps an open cart.
+**Consequences:**
+- Every request reads the full dataset and is serialized store-wide. That is fine at assignment scale, but not for a large catalog or heavy write traffic. The upgrade path is in "Several instances and a production database".
+- A request costs a few round trips to the database, roughly 100 ms to the hosted instance.
+- Sessions are still in memory.
+
+## Decision: Per-customer milestones, generated explicitly by an administrator
+
+**Context:** Every nth successful order makes a discount available. The brief also says an administrator requests generation, and a coupon is supplied at checkout. It does not say whose orders are counted.
+
+**Options considered:**
+- A store-wide counter. The 5th order overall unlocks one coupon for whoever placed it.
+- A per-customer counter where the coupon is issued automatically at checkout.
+- A per-customer counter where an administrator generates the customer’s lowest unrewarded milestone.
+
+**Choice:** A per-customer counter with admin generation, one milestone per request. The request can name a customer, or omit one to serve whoever reached an unrewarded milestone first. Codes are `REWARD-<milestone>-<customer id prefix>`. A suffix is added on the rare collision.
+
+**Why:** A store-wide counter does not reward a customer’s own loyalty. Automatic issuance would skip the brief’s “administrator requests generation” step. “Already generated” is checked by scanning that customer’s milestone coupons for the earner and milestone, not by the code, so editing or reassigning a coupon cannot open a duplicate. A failed checkout does not burn the code.
+
+**Consequences:**
+- Nobody receives a coupon until an administrator generates it. The admin page lists every customer’s progress and shows a Generate button when a customer is eligible.
+- Guest API orders no longer earn coupons. To keep coupons usable without authentication, the admin can create an “anyone” custom coupon.
+- Two checkouts racing for one code: one pays the discounted total, and the other gets `COUPON_UNAVAILABLE` and keeps an open cart.
+- An admin pause racing a checkout goes through the same lock. Either the order redeems the coupon and the pause gets `COUPON_LOCKED`, or the pause wins and the checkout gets `COUPON_UNAVAILABLE`. A test runs both orderings.
 
 ## Decision: Keep Vesta’s layering, not Vesta’s HTTP style
 
@@ -119,13 +150,13 @@ The brief does not say when the price is fixed, who a coupon belongs to, whether
 
 ## Transaction, concurrency, and idempotency
 
-Inside one process, `InMemoryCheckoutStore.transaction` runs the callback alone. Checkout does this in order:
+`transaction` runs the callback alone. The in-memory store does it with a process lock, and the Postgres store with an advisory lock inside one database transaction. Checkout does this in order:
 
 1. If the idempotency key already exists for this cart, return that order.
 2. If it exists for another cart, conflict.
 3. Require an open, non-empty cart.
 4. Price every line from the current catalog and refuse if any quantity exceeds stock.
-5. Resolve the coupon, if any, and refuse when it is missing or already redeemed.
+5. Resolve the coupon, if any. Refuse when it is missing, paused, already redeemed, or owned by another customer.
 6. Compute gross, discount, and net.
 7. Decrement stock, redeem the coupon, insert the order, mark the cart checked out, and store the key.
 
@@ -137,26 +168,33 @@ All persisted amounts are integer cents. Line total is `unitPriceCents * quantit
 
 ## Error model
 
-Expected domain failures are values, not exceptions. The HTTP adapter maps codes to 400, 404, or 409. The body is `{ error: { code, message, details } }`. Validation from Zod uses `VALIDATION_ERROR`. A missing idempotency key is its own code so a client can tell it apart from a bad quantity. Unknown routes return `NOT_FOUND`.
+Expected domain failures are values, not exceptions. The HTTP adapter maps codes to 400, 401, 404, or 409. `COUPON_LOCKED` is separate from `COUPON_UNAVAILABLE`, so an admin client can tell “you can’t edit this” apart from a shopper being told “you can’t use this”. The body is `{ error: { code, message, details } }`. Validation from Zod uses `VALIDATION_ERROR`. A missing idempotency key is its own code so a client can tell it apart from a bad quantity. Unknown routes return `NOT_FOUND`.
 
 ## Implemented and deferred
 
-Implemented: catalog, carts, checkout, idempotency, coupons, report, admin price and stock edits, focused tests including overlapping checkouts, and a small shop.
+Implemented:
+
+- Catalog, carts, checkout, idempotency, and the report.
+- Customer registration and sign-in.
+- Per-customer milestone coupons, plus admin-managed custom coupons that can be edited, paused, and deleted.
+- Admin price and stock edits.
+- Focused tests, including overlapping checkouts and a pause-versus-checkout race.
+- A small shop.
 
 Deferred:
 
-- Production authentication, password hashing, registration, reset, and API authorization. The demo has fixed in-memory customer/admin sessions.
+- Password reset, durable sessions, and API authorization. Customer and admin sessions live in memory, and the admin API stays open as the brief allows.
 - A real payment authorizer. Checkout success is payment success.
 - Coupon expiry and stacking. Customer ownership is implemented; one coupon may be supplied per checkout.
 - SKUs and color/size variants. The assignment defines a product as ID, name, current price, and inventory; variant-level inventory is outside its scope and would dilute the concurrency work the exercise weights most heavily.
 - Tax, shipping, and refunds.
 - Inventory holds and price locks.
-- More than one API process, or a durable database.
+- Row-level locking. The Postgres store serializes all work behind one advisory lock instead of locking individual product and coupon rows.
 - A CI pipeline and a performance suite. The tests cover the invariants I was unwilling to get wrong, not throughput.
 
 ## Several instances and a production database
 
-Replace the in-memory lock with one database transaction:
+The Postgres store is already durable and safe across processes, but it serializes everything behind one lock and reads the full state. To scale it, narrow each transaction to the rows it touches:
 
 - Lock product rows with `SELECT … FOR UPDATE` while decrementing a `available_quantity >= requested` check.
 - Unique constraint on the idempotency key. Insert it in the same transaction as the order. A conflict re-reads the original order when the cart matches, and returns `IDEMPOTENCY_KEY_REUSED` when it does not.
@@ -164,7 +202,7 @@ Replace the in-memory lock with one database transaction:
 - Order lines store the snapshotted name and cents so a later price update does not rewrite history.
 - The report is a read of orders and coupons, not a counter that increments on read.
 
-Two processes then share one set of invariants. The service methods stay the same. The outgoing adapter changes from `InMemoryCheckoutStore` to that transaction.
+That needs repository-style ports (load this cart, lock these products) instead of the whole-state callback, so the service methods would change shape, but not their rules.
 
 ## How AI was used
 
@@ -172,8 +210,8 @@ Cursor drafted this module from the brief and from the Vesta layout (domain, por
 
 I rejected two suggestions that would have made the submission worse. One was to copy Pluto’s POST-only managed routes and authentication guards. This exercise asks for a small HTTP API and says not to implement auth, so the edge is REST with status codes and `/admin` called out as administrative. The other was to reserve stock when an item is added to the cart, which is closer to a full commerce hold. That needs expiry and a sweeper I would not finish honestly here, and it is a poorer fit for “price and availability may change before checkout.” Checkout-time checks plus the single lock are the rule that is actually enforced.
 
-I also kept the shop small. SleepyHug’s React Router and Vite setup is the UI stack, not a second storefront to rebuild. The UI stores the idempotency key and renders the receipt; it does not reimplement the rules.
+I also kept the shop small. The React Router and Vite setup is the UI stack, not a second storefront to rebuild. The UI stores the idempotency key and renders the receipt; it does not reimplement the rules.
 
 ## Another two hours
 
-I would put the same transaction behind Postgres and rerun the overlapping checkout tests against two processes, to show the unique idempotency key and the conditional coupon update doing the work the in-memory lock does now.
+I would run the overlapping checkout tests against two API processes sharing the real Postgres instance (PGlite is single-session), then move checkout to row-level locks so unrelated carts stop waiting on each other.

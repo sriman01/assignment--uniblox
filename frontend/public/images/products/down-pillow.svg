@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Down pillow">
+  <rect width="400" height="400" fill="#e8eef8"/>
+  <ellipse cx="200" cy="300" rx="150" ry="18" fill="#c9d4e6" opacity=".8"/>
+  <path d="M74 150c-8-30 14-52 44-46 54 10 110 10 164 0 30-6 52 16 44 46-8 32-8 66 0 98 8 30-14 52-44 46-54-10-110-10-164 0-30 6-52-16-44-46 8-32 8-66 0-98z" fill="#ffffff"/>
+  <path d="M96 160c-4-16 8-28 24-24 52 10 108 10 160 0 16-4 28 8 24 24" fill="none" stroke="#dbe3f0" stroke-width="4"/>
+  <path d="M112 270c50-10 126-10 176 0" fill="none" stroke="#dbe3f0" stroke-width="4"/>
+  <path d="M200 120v160" stroke="#edf1f8" stroke-width="3"/>
+  <circle cx="200" cy="200" r="6" fill="#102858" opacity=".18"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Folded merino blanket">
+  <rect width="400" height="400" fill="#efe6d6"/>
+  <ellipse cx="200" cy="318" rx="140" ry="16" fill="#d8cab0" opacity=".6"/>
+  <rect x="78" y="236" width="244" height="76" rx="18" fill="#cdb48c"/>
+  <rect x="78" y="236" width="244" height="22" rx="11" fill="#dcc6a2"/>
+  <rect x="88" y="168" width="224" height="74" rx="18" fill="#e3d2b4"/>
+  <rect x="88" y="168" width="224" height="20" rx="10" fill="#efe2c9"/>
+  <rect x="98" y="104" width="204" height="70" rx="18" fill="#c9ad80"/>
+  <rect x="98" y="104" width="204" height="20" rx="10" fill="#d9c199"/>
+  <g stroke="#b89a6b" stroke-width="2" opacity=".55">
+    <path d="M118 140h164M118 152h164M108 206h184M108 218h184M98 274h204M98 286h204"/>
+  </g>
+  <rect x="270" y="104" width="10" height="70" fill="#102858" opacity=".75"/>
+</svg>

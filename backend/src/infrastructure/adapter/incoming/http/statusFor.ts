@@ -1,0 +1,31 @@
+import type { ErrorCode } from "../../../../domain/errors.js";
+
+type ErrorStatus = 400 | 401 | 404 | 409;
+
+const statusByCode = {
+  VALIDATION_ERROR: 400,
+  INVALID_QUANTITY: 400,
+  IDEMPOTENCY_KEY_REQUIRED: 400,
+  INVALID_CREDENTIALS: 401,
+  UNAUTHORIZED: 401,
+  PRODUCT_NOT_FOUND: 404,
+  CART_NOT_FOUND: 404,
+  ORDER_NOT_FOUND: 404,
+  COUPON_NOT_FOUND: 404,
+  CUSTOMER_NOT_FOUND: 404,
+  ITEM_NOT_IN_CART: 404,
+  INSUFFICIENT_INVENTORY: 409,
+  ITEM_ALREADY_IN_CART: 409,
+  CART_ALREADY_CHECKED_OUT: 409,
+  CART_EMPTY: 409,
+  COUPON_UNAVAILABLE: 409,
+  NO_ELIGIBLE_MILESTONE: 409,
+  IDEMPOTENCY_KEY_REUSED: 409,
+  EMAIL_TAKEN: 409,
+  COUPON_CODE_TAKEN: 409,
+  COUPON_LOCKED: 409,
+} as const satisfies Record<ErrorCode, ErrorStatus>;
+
+export function statusFor(code: ErrorCode): ErrorStatus {
+  return statusByCode[code];
+}

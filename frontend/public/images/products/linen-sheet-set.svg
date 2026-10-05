@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Stack of linen sheets">
+  <rect width="400" height="400" fill="#eef0f4"/>
+  <ellipse cx="200" cy="316" rx="150" ry="16" fill="#cfd5e0" opacity=".7"/>
+  <path d="M70 250c0-10 8-18 18-18h224c10 0 18 8 18 18v40c0 10-8 18-18 18H88c-10 0-18-8-18-18z" fill="#ffffff"/>
+  <path d="M70 262h260" stroke="#dfe4ec" stroke-width="3"/>
+  <path d="M80 190c0-10 8-18 18-18h204c10 0 18 8 18 18v40c0 10-8 18-18 18H98c-10 0-18-8-18-18z" fill="#c8d3e6"/>
+  <path d="M80 202h240" stroke="#b5c3db" stroke-width="3"/>
+  <path d="M92 130c0-10 8-18 18-18h180c10 0 18 8 18 18v40c0 10-8 18-18 18H110c-10 0-18-8-18-18z" fill="#f7f8fb"/>
+  <path d="M92 142h216" stroke="#e1e6ee" stroke-width="3"/>
+  <g fill="none" stroke="#9fb0cc" stroke-width="2" opacity=".6">
+    <path d="M110 160c30 6 60 6 90 0s60-6 90 0"/>
+    <path d="M98 222c34 6 68 6 102 0s68-6 102 0"/>
+  </g>
+  <rect x="250" y="112" width="40" height="76" fill="#102858" opacity=".08"/>
+</svg>

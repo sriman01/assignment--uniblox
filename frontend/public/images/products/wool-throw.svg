@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Herringbone wool throw">
+  <rect width="400" height="400" fill="#ece4dc"/>
+  <defs>
+    <pattern id="herringbone" width="24" height="24" patternUnits="userSpaceOnUse">
+      <rect width="24" height="24" fill="#6d5d4a"/>
+      <path d="M0 24 12 12 24 24M0 12 12 0 24 12" fill="none" stroke="#7f6e59" stroke-width="4"/>
+    </pattern>
+  </defs>
+  <ellipse cx="200" cy="320" rx="140" ry="16" fill="#cdbfb0" opacity=".7"/>
+  <path d="M86 110h228c12 0 20 8 20 20v150c0 12-8 20-20 20H86c-12 0-20-8-20-20V130c0-12 8-20 20-20z" fill="url(#herringbone)"/>
+  <path d="M66 200h268" stroke="#5a4b3a" stroke-width="4" opacity=".5"/>
+  <g stroke="#6d5d4a" stroke-width="3" stroke-linecap="round">
+    <path d="M78 300v16M92 300v18M106 300v16M120 300v18M134 300v16M148 300v18M162 300v16M176 300v18M190 300v16M204 300v18M218 300v16M232 300v18M246 300v16M260 300v18M274 300v16M288 300v18M302 300v16M316 300v18"/>
+  </g>
+</svg>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Cedar sachets">
+  <rect width="400" height="400" fill="#f1eadf"/>
+  <ellipse cx="200" cy="300" rx="150" ry="16" fill="#d9ccb7" opacity=".7"/>
+  <g>
+    <path d="M96 170c0-12 10-20 22-20h60c12 0 22 8 22 20v100c0 12-10 20-22 20h-60c-12 0-22-8-22-20z" fill="#e8dcc6"/>
+    <path d="M118 150c8-22 52-22 60 0" fill="none" stroke="#102858" stroke-width="5" stroke-linecap="round"/>
+    <path d="M110 190h80M110 206h80" stroke="#d6c6a8" stroke-width="3"/>
+  </g>
+  <g>
+    <path d="M210 190c0-12 10-20 22-20h60c12 0 22 8 22 20v80c0 12-10 20-22 20h-60c-12 0-22-8-22-20z" fill="#dccaa8"/>
+    <path d="M232 170c8-22 52-22 60 0" fill="none" stroke="#07aa8e" stroke-width="5" stroke-linecap="round"/>
+    <path d="M224 210h80M224 226h80" stroke="#c8b48e" stroke-width="3"/>
+  </g>
+  <g fill="#b07a4a">
+    <rect x="132" y="236" width="32" height="18" rx="4"/>
+    <rect x="246" y="246" width="32" height="18" rx="4"/>
+  </g>
+  <g fill="#9a6a3e" opacity=".5">
+    <rect x="136" y="242" width="24" height="3"/>
+    <rect x="250" y="252" width="24" height="3"/>
+  </g>
+</svg>

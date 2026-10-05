@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Silk travel eye mask">
+  <rect width="400" height="400" fill="#e5e8ef"/>
+  <ellipse cx="200" cy="292" rx="140" ry="14" fill="#c7cdd9" opacity=".8"/>
+  <path d="M40 196c40-16 70-20 96-18M264 178c26-2 56 2 96 18" fill="none" stroke="#2c2a28" stroke-width="8" stroke-linecap="round"/>
+  <path d="M120 150c26-14 54-16 80-6 26-10 54-8 80 6 34 18 42 70 16 96-22 22-58 22-82 2-6-5-10-6-14-6s-8 1-14 6c-24 20-60 20-82-2-26-26-18-78 16-96z" fill="#2c2a28"/>
+  <path d="M134 170c20-10 40-10 58-2M208 168c18-8 38-8 58 2" fill="none" stroke="#4a4744" stroke-width="5" stroke-linecap="round"/>
+  <path d="M120 150c26-14 54-16 80-6 26-10 54-8 80 6" fill="none" stroke="#5c5955" stroke-width="3"/>
+  <circle cx="200" cy="228" r="5" fill="#07aa8e"/>
+</svg>
