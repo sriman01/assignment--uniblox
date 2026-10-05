@@ -1,41 +1,60 @@
 # Northline checkout
 
-A checkout and rewards API for a small store, with a thin shop UI in front of it. The API is the part under test. The UI exists so the same flows can be clicked through.
+A checkout and rewards API for a small store, with a thin shop and admin UI in front of it. The API is the part under test. The UI exists so the same flows can be clicked through.
 
-Money is integer cents. Checkout is idempotent. Inventory and coupons stay consistent when requests overlap.
-Entity IDs are RFC 4122 UUIDs. Stored and returned timestamps are branded ISO 8601 UTC datetimes such as `2026-10-05T04:30:00.000Z`.
+- Money is integer cents.
+- Checkout is idempotent: a retried request returns the same order and never charges inventory twice.
+- Inventory and coupons stay consistent when requests overlap.
+- Every nth order *by the same customer* earns that customer a coupon, which an administrator generates.
+- Entity IDs are RFC 4122 UUIDs. Timestamps are ISO 8601 UTC, such as `2026-10-05T04:30:00.000Z`.
+
+Design decisions, invariants, trade-offs, and what was deferred are in [`DECISIONS.md`](DECISIONS.md).
 
 ## Run
 
+Requires Node 22 or later. No database, account, or credentials are needed: with no `.env`, the app runs on an in-memory store seeded with demo data.
+
 ```bash
-cd checkout
+git clone https://github.com/sriman01/assignment--uniblox.git
+cd assignment--uniblox
 npm install
 npm test
 npm run dev
 ```
 
-- API in development: http://127.0.0.1:4000/api
-- Shop: http://127.0.0.1:5173
+- API: http://127.0.0.1:4000/api
+- Shop: http://127.0.0.1:5173 (if that port is taken, Vite prints the one it used)
 
-If 5173 is already taken, Vite prints the port it actually used.
-
-Production is one deployment and one server:
+To run it the way production does, as one server:
 
 ```bash
 npm run build
 npm start
 ```
 
-Open http://localhost:4000. The same Node process serves the React application and all endpoints under `/api`. The `frontend` and `backend` directories are source-code boundaries, not separate deployable services.
+Open http://localhost:4000. One Node process serves the React app and every endpoint under `/api`. The `frontend` and `backend` directories are source boundaries, not separate services.
 
-`npm run dev:backend` and `npm run dev:frontend` remain available for independent hot-reload during development. `npm run typecheck` runs the TypeScript compiler.
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | API and Vite dev server together, with hot reload |
+| `npm test` | All tests, including the Postgres adapter against embedded PGlite |
+| `npm run typecheck` | TypeScript compiler, no output |
+| `npm run build` / `npm start` | Build the UI, then serve UI and API from one process |
+| `npm run build:vercel` / `npm run build:netlify` | Build for a serverless host; see below |
 
-### Storage
+## How it works
 
-The server reads `.env` at startup (copy `.env.example`; `.env` is git-ignored).
+- **Layers.** Domain rules (`backend/src/domain`) and application services (`backend/src/application/service`) depend only on ports. HTTP and storage are adapters around them, so the same checkout code runs on the in-memory store, on Postgres, and inside a serverless function.
+- **One unit of work per request.** Every service call runs inside `CheckoutStorePort.transaction(work)`, which runs alone. The in-memory store uses a FIFO lock. The Postgres store uses one database transaction holding `pg_advisory_xact_lock`, so it is also safe across several processes, and a thrown error rolls everything back.
+- **Checkout** checks everything first: idempotency key, cart state, stock at the current price, and the coupon. It writes only after every check has passed: stock, coupon, order, cart, and key, all in the same unit of work.
+- **Sessions** are HMAC-signed cookies, so any instance can verify them without shared memory.
 
-- **`DB_HOST` set:** data lives in Postgres. On first start the server creates the tables and seeds the catalog, config, and demo customer; later starts keep existing data. Tables: `products`, `customers`, `carts`, `orders`, `coupons`, `idempotency_keys`, `store_config`.
-- **`DB_HOST` empty:** data lives in memory, and a restart resets everything to the seed.
+## Storage
+
+The server reads `.env` at startup. Copy `.env.example` to create one; `.env` is git-ignored.
+
+- **`DB_HOST` empty or unset:** data lives in memory, and a restart resets it to the seed.
+- **`DB_HOST` set:** data lives in Postgres. On first start the server creates the tables and seeds the catalog, config, and demo customer. Later starts keep existing data. The tables are `products`, `customers`, `carts`, `orders`, `coupons`, `idempotency_keys`, and `store_config`.
 
 | Variable | Meaning |
 | --- | --- |
@@ -49,7 +68,11 @@ If the database is configured but unreachable, the server exits instead of silen
 
 Customer and admin sessions are HMAC-signed cookies that last 7 days, so any server instance can verify them. Without `SESSION_SECRET`, each process makes up a random secret, and a restart signs everyone out.
 
-### Deploy to Vercel
+## Deploy
+
+Vercel and Netlify serve static files from a CDN and run the API as serverless functions; neither keeps a long-running Node server. So each has a small entry file (`backend/src/vercel.ts`, `backend/src/netlify.ts`) that wraps the same Hono app, and a build script that bundles it with esbuild into one function. Data and sessions cannot live in memory there, so a database and `SESSION_SECRET` are required.
+
+### Vercel
 
 `vercel.json` runs `npm run build:vercel`. That builds the React app and writes Vercel's Build Output layout to `.vercel/output`:
 
@@ -66,9 +89,9 @@ To deploy:
    - `SESSION_SECRET`
 3. Deploy, then check `/api/health` and `/api/products`.
 
-The function refuses to start without `DB_HOST` or `SESSION_SECRET`. Function instances come and go, so neither data nor sessions may live in memory there.
+The function refuses to start without `DB_HOST` or `SESSION_SECRET`.
 
-### Deploy to Netlify
+### Netlify
 
 `netlify.toml` sets everything up:
 
@@ -78,7 +101,20 @@ The function refuses to start without `DB_HOST` or `SESSION_SECRET`. Function in
 
 Set the same environment variables as for Vercel. Don't set `PORT`, which nothing uses there. Netlify's secrets scan fails a build when a variable's value also appears in the repo. `netlify.toml` excludes the non-secret settings (`PORT`, `DB_PORT`, `DB_SSL_MODE`, `DB_SCHEMA`) from that scan.
 
-`npm test` never touches the configured database. The in-memory tests run as before, and `postgresStore.test.ts` runs the Postgres adapter against an embedded PGlite instance.
+## Tests
+
+`npm test` runs 29 tests with Vitest. It never touches the configured database: the service tests use the in-memory store, and `postgresStore.test.ts` runs the Postgres adapter against an embedded PGlite instance.
+
+The tests concentrate on competing and repeated operations, not only happy paths:
+
+- two overlapping checkouts for the last unit: exactly one succeeds;
+- two checkouts racing for one coupon: it is redeemed once;
+- overlapping retries with one idempotency key become one order, and that key is rejected on another cart;
+- an admin pausing a coupon while a checkout redeems it: exactly one of them wins, in either order;
+- a failed checkout leaves the coupon and cart untouched;
+- order prices stay frozen after catalog changes;
+- the report reconciles with orders and coupons, and reading it twice changes nothing;
+- Postgres: data survives a restart, many concurrent checkouts sell the last unit once, and a throw rolls back everything.
 
 ## What is seeded
 
@@ -99,7 +135,7 @@ Administrators can also create custom coupons for anyone or for one customer. Th
 
 The shop is a navy and teal storefront. It has a two-row header with search, wishlist, cart, and account indicators. The pages are Home, Products (`/products`, with category, availability, and sort filters), a product detail page (`/products/:productId`), Cart, Checkout, Receipt, Account, Wishlist, About us, and Contact us.
 
-- **Add to cart** stays on the current page and opens the cart drawer. Adding a product that is already in the cart raises that line’s quantity, because the API keeps one line per product.
+- **Add to cart** stays on the current page and opens the cart drawer. The API keeps one line per product, so when the product is already in the cart, the shop raises that line’s quantity with `PATCH` instead of adding a second line.
 - **Sign in** works from the account dropdown in the header or from `/sign-in`. Either way you return to the page you were on. Checkout sends signed-out shoppers to sign in and brings them back to `/checkout` afterwards.
 - **Wishlist** is saved in the browser (`localStorage`), so it lasts across reloads and syncs between tabs. The API has no wishlist. “Move to cart” adds the product to the cart and removes it from the wishlist.
 
@@ -315,7 +351,7 @@ The split follows a ports-and-adapters shape: domain rules, outgoing ports, appl
 ```
 backend/src/domain                         money, errors, catalog, result
 backend/src/application/port/outgoing      store, clock, and id ports
-backend/src/application/service            cart, checkout, coupons, report
+backend/src/application/service            storefront (cart, checkout), customers, admin (coupons, report)
 backend/src/infrastructure/adapter/incoming/http
 backend/src/infrastructure/adapter/outgoing   in-memory store, Postgres store, lock, clock, ids, hashing
 backend/src/infrastructure/composition     wires one module; database config and startup
@@ -329,6 +365,7 @@ frontend/src/lib                          API client, cart action, wishlist, mon
 frontend/src/styles                       design tokens, storefront, and admin styles
 frontend/public/images                    local product artwork
 frontend/src/router.tsx                   application route composition
+scripts/                                  serverless build scripts for Vercel and Netlify
 ```
 
-Design choices and the things left undone are in `DECISIONS.md`.
+Design choices and the things left undone are in [`DECISIONS.md`](DECISIONS.md).

@@ -34,7 +34,7 @@ export function OrderPage() {
 
         <section className="card">
           <div className="card__header"><h2>Order details</h2><span className="muted small">{units} item{units === 1 ? "" : "s"}</span></div>
-          <table className="data-table responsive-table">
+          <table className="data-table responsive-table receipt__lines">
             <thead>
               <tr><th>Product</th><th className="num">Price</th><th className="num">Qty</th><th className="num">Total</th></tr>
             </thead>
