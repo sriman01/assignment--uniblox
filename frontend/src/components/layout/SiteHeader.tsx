@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form, Link, NavLink, useLocation, useSearchParams } from "react-router";
 import { useWishlist } from "../../lib/wishlist";
 import type { Customer } from "../../types";
@@ -24,11 +24,22 @@ export function SiteHeader({ cartCount, customer }: SiteHeaderProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuPanel = useRef<HTMLDivElement>(null);
   const query = location.pathname === "/products" ? searchParams.get("q") ?? "" : "";
 
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuPanel.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
 
   const search = (
     <Form method="get" action="/products" className="search" role="search" key={query}>
@@ -45,12 +56,12 @@ export function SiteHeader({ cartCount, customer }: SiteHeaderProps) {
         <button
           type="button"
           className="icon-button site-header__menu-toggle"
-          onClick={() => setMenuOpen((value) => !value)}
+          onClick={() => setMenuOpen(true)}
           aria-expanded={menuOpen}
           aria-controls="site-navigation"
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-label="Open menu"
         >
-          <Icon name={menuOpen ? "close" : "menu"} size={22} />
+          <Icon name="menu" size={22} />
         </button>
 
         <Link to="/" className="logo" aria-label="Assignment home">
@@ -84,7 +95,28 @@ export function SiteHeader({ cartCount, customer }: SiteHeaderProps) {
           </div>
         </div>
 
-        <div className={`site-header__main${menuOpen ? " is-open" : ""}`} id="site-navigation">
+        <div
+          className={`site-header__backdrop${menuOpen ? " is-open" : ""}`}
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
+        <div
+          className={`site-header__main${menuOpen ? " is-open" : ""}`}
+          id="site-navigation"
+          ref={menuPanel}
+          tabIndex={-1}
+        >
+          <div className="site-header__drawer-head">
+            <Link to="/" className="logo" aria-label="Assignment home">
+              <span className="logo__mark">A</span>
+              <span className="logo__text">
+                <strong>Assignment</strong>
+              </span>
+            </Link>
+            <button type="button" className="icon-button" onClick={() => setMenuOpen(false)} aria-label="Close menu">
+              <Icon name="close" size={20} />
+            </button>
+          </div>
           <nav className="main-menu" aria-label="Main">
             <ul>
               {navigation.map((item) => (
