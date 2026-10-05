@@ -114,13 +114,6 @@
 6. Compute gross, discount, and net.
 7. Decrement stock, redeem the coupon, insert the order, mark the cart checked out, and store the key.
 
-Steps 1–6 do not write. Step 7 runs only after they pass. A thrown error after a write would be a defect; the checks are repeated immediately before the writes so a logic bug fails closed instead of publishing a half-updated order. The lock makes the “repeated check” redundant against other requests. It is there so the write block stays obviously all-or-nothing.
-
-## Money and rounding
-
-All persisted amounts are integer cents. Line total is `unitPriceCents * quantity`. Discount is `floor(grossCents * percent / 100)`, applied once, and never greater than the gross. Example: 1234 cents at 10% discounts 123 cents, net 1111. A 100% coupon nets zero.
-
-
 ## Implemented and deferred
 
 Implemented:
@@ -161,8 +154,3 @@ Today a product is the thing that is priced and stocked. With variants, the prod
 - **Product page:** a picker shows each option axis. Combinations that don't exist or are out of stock are disabled.
 - **Report:** quantity is reported per product, with a per-SKU breakdown.
 - **Migration:** each existing product becomes one product with a single default SKU that carries its current price and stock.
-
-
-## Another two hours
-
-I would run the overlapping checkout tests against two API processes sharing the real Postgres instance (PGlite is single-session), then move checkout to row-level locks so unrelated carts stop waiting on each other.
