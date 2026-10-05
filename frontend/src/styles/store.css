@@ -1989,8 +1989,17 @@
   .indicator {
     padding: 0 8px;
   }
-  .container {
-    padding: 0 8px;
+  .hero__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .hero__stats {
+    gap: 20px;
+  }
+  .hero__stats span {
+    display: block;
+    margin-top: 4px;
+    line-height: 1.35;
   }
 }
 
