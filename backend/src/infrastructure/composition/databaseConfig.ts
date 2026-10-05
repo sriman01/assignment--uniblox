@@ -7,9 +7,23 @@ export type DatabaseConfig = {
   label: string;
 };
 
-/** Hosts without a filesystem (e.g. Vercel, Netlify) store the PEM itself in the variable, sometimes with literal `\n`. */
+/**
+ * Rebuilds PEM line structure. Dashboard inputs often turn the newlines of a pasted certificate into spaces
+ * or literal `\n`, and Node silently ignores a CA it cannot parse.
+ */
+function normalizePem(value: string): string {
+  const blocks = [...value.matchAll(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g)].map((match) => {
+    const body = match[1].replace(/\\n/g, "").replace(/[^A-Za-z0-9+/=]/g, "");
+    const lines = body.match(/.{1,64}/g) ?? [];
+    return ["-----BEGIN CERTIFICATE-----", ...lines, "-----END CERTIFICATE-----"].join("\n");
+  });
+  if (blocks.length === 0) throw new Error("DB_SSL_CA has a BEGIN CERTIFICATE line but no complete certificate");
+  return `${blocks.join("\n")}\n`;
+}
+
+/** Hosts without a filesystem (e.g. Vercel, Netlify) store the PEM itself in the variable. */
 function caCertificate(value: string): string {
-  if (value.includes("-----BEGIN CERTIFICATE-----")) return value.replace(/\\n/g, "\n");
+  if (value.includes("-----BEGIN CERTIFICATE-----")) return normalizePem(value);
   if (!existsSync(value)) {
     throw new Error(
       `DB_SSL_CA is "${value.slice(0, 40)}", which is neither certificate text nor an existing file. ` +
