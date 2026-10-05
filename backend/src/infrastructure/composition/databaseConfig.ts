@@ -7,17 +7,18 @@ export type DatabaseConfig = {
   label: string;
 };
 
-/**
- * Returns `null` when DB_HOST is unset, which keeps the app on the in-memory store.
- * DB_SSL_MODE: `require` (default: encrypted, certificate not verified), `verify-full` (needs DB_SSL_CA), or `disable`.
- * DB_SSL_CA: the PEM text itself, or a path to the PEM file.
- */
-/** Hosts without a filesystem (e.g. Vercel) store the PEM itself in the variable, sometimes with literal `\n`. */
+/** Hosts without a filesystem (e.g. Vercel, Netlify) store the PEM itself in the variable, sometimes with literal `\n`. */
 function caCertificate(value: string): string {
   if (value.includes("-----BEGIN CERTIFICATE-----")) return value.replace(/\\n/g, "\n");
   return readFileSync(value, "utf8");
 }
 
+/**
+ * Returns `null` when DB_HOST is unset, which keeps the app on the in-memory store.
+ * DB_SSL_CA: the PEM text itself, or a path to the PEM file.
+ * DB_SSL_MODE: `verify-full` (default when DB_SSL_CA is set), `require` (default otherwise: encrypted, certificate
+ * not verified), or `disable`.
+ */
 export function databaseConfigFromEnv(env: NodeJS.ProcessEnv = process.env): DatabaseConfig | null {
   const host = env.DB_HOST?.trim();
   if (!host) return null;
@@ -37,7 +38,7 @@ export function databaseConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Dat
     throw new Error(`DB_SCHEMA must be a lowercase identifier, got ${schema}`);
   }
 
-  const sslMode = env.DB_SSL_MODE?.trim() || "require";
+  const sslMode = env.DB_SSL_MODE?.trim() || (env.DB_SSL_CA?.trim() ? "verify-full" : "require");
   let ssl: PoolConfig["ssl"];
   if (sslMode === "disable") {
     ssl = false;

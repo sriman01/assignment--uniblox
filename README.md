@@ -40,7 +40,8 @@ The server reads `.env` at startup (copy `.env.example`; `.env` is git-ignored).
 | Variable | Meaning |
 | --- | --- |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | Connection |
-| `DB_SSL_MODE` | `require` (default, encrypted), `verify-full` (also set `DB_SSL_CA` to the CA certificate path, or paste the PEM text itself on hosts like Vercel), or `disable` for a local database |
+| `DB_SSL_CA` | The CA certificate: a file path locally, or the PEM text itself on hosts without files (Vercel, Netlify) |
+| `DB_SSL_MODE` | Optional. `verify-full` is the default when `DB_SSL_CA` is set. Otherwise the default is `require` (encrypted, certificate not checked). `disable` is for a local database |
 | `DB_SCHEMA` | Schema for the tables, default `public` |
 | `SESSION_SECRET` | At least 32 characters; signs the session cookies (`openssl rand -hex 32`) |
 
@@ -61,12 +62,21 @@ To deploy:
 1. Import the repo in Vercel. The project settings in `vercel.json` override the dashboard preset, so no framework or output directory needs choosing.
 2. Add these environment variables:
    - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`
-   - `DB_SSL_MODE=verify-full`
    - `DB_SSL_CA`: the full text of the CA certificate. Vercel has no file upload.
    - `SESSION_SECRET`
 3. Deploy, then check `/api/health` and `/api/products`.
 
 The function refuses to start without `DB_HOST` or `SESSION_SECRET`. Function instances come and go, so neither data nor sessions may live in memory there.
+
+### Deploy to Netlify
+
+`netlify.toml` sets everything up:
+
+- It runs `npm run build:netlify`, which builds the React app and bundles the API into `netlify-functions/api.mjs`.
+- It publishes `frontend/dist`.
+- It rewrites `/api/*` to the function, and every other path to `index.html`.
+
+Set the same environment variables as for Vercel. Don't set `PORT`, which nothing uses there. Netlify's secrets scan fails a build when a variable's value also appears in the repo. `netlify.toml` excludes the non-secret settings (`PORT`, `DB_PORT`, `DB_SSL_MODE`, `DB_SCHEMA`) from that scan.
 
 `npm test` never touches the configured database. The in-memory tests run as before, and `postgresStore.test.ts` runs the Postgres adapter against an embedded PGlite instance.
 
@@ -311,6 +321,7 @@ backend/src/infrastructure/adapter/outgoing   in-memory store, Postgres store, l
 backend/src/infrastructure/composition     wires one module; database config and startup
 backend/src/main.ts                        long-running Node server (npm start)
 backend/src/vercel.ts                      Vercel function entry, bundled by scripts/build-vercel.mjs
+backend/src/netlify.ts                     Netlify function entry, bundled by scripts/build-netlify.mjs
 backend/tests                              API and domain tests
 frontend/src/routes                       React Router route modules and admin route group
 frontend/src/components                   layout, store, admin, and shared UI components

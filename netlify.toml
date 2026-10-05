@@ -1,0 +1,26 @@
+[build]
+  command = "npm run build:netlify"
+  publish = "frontend/dist"
+
+[build.environment]
+  # These settings are not secrets, and their values (e.g. 4000, verify-full) also appear in code and docs.
+  SECRETS_SCAN_OMIT_KEYS = "PORT,DB_PORT,DB_SSL_MODE,DB_SCHEMA"
+
+[functions]
+  directory = "netlify-functions"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

@@ -10,7 +10,8 @@
     "start": "tsx backend/src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:vercel": "npm run build && node scripts/build-vercel.mjs"
+    "build:vercel": "npm run build && node scripts/build-vercel.mjs",
+    "build:netlify": "npm run build && node scripts/build-netlify.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",
