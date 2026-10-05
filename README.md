@@ -310,7 +310,7 @@ Repeat the checkout command. The second response is the same order, with `Idempo
 
 ## Layout
 
-The split follows the Vesta service shape: domain rules, outgoing ports, application services, an incoming HTTP adapter, and outgoing adapters behind those ports.
+The split follows a ports-and-adapters shape: domain rules, outgoing ports, application services, an incoming HTTP adapter, and outgoing adapters behind those ports.
 
 ```
 backend/src/domain                         money, errors, catalog, result

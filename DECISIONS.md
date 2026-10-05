@@ -183,18 +183,18 @@ The brief leaves several questions open:
 - When two checkouts race for one code, one pays the discounted total. The other gets `COUPON_UNAVAILABLE` and keeps an open cart.
 - An admin pause racing a checkout goes through the same lock. Either the order redeems the coupon and the pause gets `COUPON_LOCKED`, or the pause wins and the checkout gets `COUPON_UNAVAILABLE`. A test runs both orderings.
 
-## Decision: Keep Vesta's layering, not Vesta's HTTP style
+## Decision: Ports-and-adapters layering, with plain REST at the edge
 
-**Context:** The service should be recognizable as the same kind of module we use in Vesta, and it still has to be a small API with explicit status codes.
+**Context:** The checkout rules need to be testable without an HTTP server or a database, and the API still has to be small, with explicit status codes.
 
 **Options considered:**
-- POST-only routes, authentication guards, and workspace scope, matching Pluto controllers.
-- A flat Express router with the rules in the handlers.
+- A flat router with the rules written inside the route handlers.
+- POST-only RPC-style routes behind authentication guards.
 - Domain, outgoing ports, application services, an incoming HTTP adapter, and outgoing adapters, with REST verbs and status codes at the edge and `Result` with `success` for expected failures.
 
 **Choice:** The layered module, with ordinary HTTP at the edge.
 
-**Why:** The layering is what keeps the checkout rules testable without the server. Vesta's all-POST admin routes and capability guards assume a platform this exercise does not have.
+**Why:** The layering is what keeps the checkout rules testable without the server, and lets the storage change without touching them. RPC routes and auth guards add machinery the brief does not ask for; it wants a small HTTP API and says authentication is not required.
 
 **Consequences:** Expected failures return a `code` and a status, and unexpected failures still throw. Swapping the store from memory to Postgres touched no service code.
 
@@ -328,10 +328,10 @@ Today a product is the thing that is priced and stocked. With variants, the prod
 
 ## How AI was used
 
-Cursor drafted much of this module from the brief and from the Vesta layout: domain, ports, incoming and outgoing adapters, and `Result`. I reviewed and ran everything, and redirected it several times:
+Cursor drafted much of this module from the brief and from a ports-and-adapters layout I specified: domain, ports, incoming and outgoing adapters, and `Result`. I reviewed and ran everything, and redirected it several times:
 
 - **Coupon semantics.** The first version counted every nth order store-wide and issued one coupon to whoever placed it. I rejected that as a lottery, not a loyalty reward, and redirected it to per-customer milestones. Guests don't count, admins generate per customer, and admins can edit, pause, reassign, or delete unredeemed coupons. That change reshaped the domain model (`earnedByCustomerId` versus `customerId`) and most of the coupon tests.
-- **HTTP style.** It suggested copying Pluto's POST-only managed routes and authentication guards. The brief asks for a small HTTP API and says auth is not required, so the edge stays REST with status codes, and `/admin` is marked as administrative.
+- **HTTP style.** It suggested POST-only RPC-style routes behind authentication guards. The brief asks for a small HTTP API and says auth is not required, so the edge stays REST with status codes, and `/admin` is marked as administrative.
 - **Cart holds.** It suggested reserving stock when an item is added to the cart. That needs expiry and a sweeper I would not finish honestly in the timebox, and it fits "price and availability may change before checkout" poorly. Checkout-time checks plus the single lock are the rule actually enforced.
 - **Repository history.** It committed on my behalf. I removed those commits, so the history reflects my own increments.
 - **Deployment bugs.** I deployed to Vercel and Netlify myself and fed back real failures: a missing output directory, a secrets-scan false positive, and a 502 caused by a CA certificate whose line breaks the dashboard had collapsed. Each fix was checked against the live database before I pushed it.
